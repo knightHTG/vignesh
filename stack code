@@ -1,0 +1,100 @@
+package com.example.webhook;
+
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.http.*;
+import org.springframework.web.client.RestTemplate;
+
+import java.util.HashMap;
+import java.util.Map;
+
+@SpringBootApplication
+public class WebhookApplication implements CommandLineRunner {
+
+    private static final String INIT_URL = "https://bfhldevapigw.healthrx.co.in/hiring/generateWebhook/JAVA";
+
+    public static void main(String[] args) {
+        SpringApplication.run(WebhookApplication.class, args);
+    }
+
+    @Override
+    public void run(String... args) throws Exception {
+        RestTemplate restTemplate = new RestTemplate();
+
+        // Step 1: Send POST request to generate webhook
+        Map<String, String> body = new HashMap<>();
+        body.put("name", "John Doe");
+        body.put("regNo", "REG12347"); // change regNo if needed
+        body.put("email", "john@example.com");
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<Map<String, String>> request = new HttpEntity<>(body, headers);
+
+        ResponseEntity<WebhookResponse> response =
+                restTemplate.postForEntity(INIT_URL, request, WebhookResponse.class);
+
+        if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+            WebhookResponse webhookResponse = response.getBody();
+            System.out.println("Webhook URL: " + webhookResponse.getWebhook());
+            System.out.println("Access Token: " + webhookResponse.getAccessToken());
+
+            // Step 2: Determine SQL Question based on regNo last two digits
+            String regNo = body.get("regNo");
+            int lastTwo = Integer.parseInt(regNo.replaceAll("\\D", "").substring(regNo.length() - 2));
+            String finalQuery;
+            if (lastTwo % 2 == 1) {
+                // Odd → Question 1 (replace with your SQL solution)
+                finalQuery = "SELECT department, COUNT(*) AS employee_count FROM Employees GROUP BY department;";
+            } else {
+                // Even → Question 2 (replace with your SQL solution)
+                finalQuery = "SELECT customer_id, SUM(amount) AS total_spent FROM Orders GROUP BY customer_id HAVING SUM(amount) > 1000;";
+            }
+
+            // Step 3: Submit solution
+            HttpHeaders authHeaders = new HttpHeaders();
+            authHeaders.setContentType(MediaType.APPLICATION_JSON);
+            authHeaders.set("Authorization", webhookResponse.getAccessToken());
+
+            Map<String, String> answer = new HashMap<>();
+            answer.put("finalQuery", finalQuery);
+
+            HttpEntity<Map<String, String>> answerRequest = new HttpEntity<>(answer, authHeaders);
+
+            ResponseEntity<String> submitResponse =
+                    restTemplate.postForEntity(webhookResponse.getWebhook(), answerRequest, String.class);
+
+            System.out.println("Submit Response: " + submitResponse.getStatusCode());
+            System.out.println("Response Body: " + submitResponse.getBody());
+        } else {
+            System.out.println("Failed to generate webhook");
+        }
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    static class WebhookResponse {
+        @JsonProperty("webhook")
+        private String webhook;
+        @JsonProperty("accessToken")
+        private String accessToken;
+
+        public String getWebhook() {
+            return webhook;
+        }
+
+        public void setWebhook(String webhook) {
+            this.webhook = webhook;
+        }
+
+        public String getAccessToken() {
+            return accessToken;
+        }
+
+        public void setAccessToken(String accessToken) {
+            this.accessToken = accessToken;
+        }
+    }
+}
